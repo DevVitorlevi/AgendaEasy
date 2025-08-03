@@ -1,5 +1,4 @@
-const Reservation = require('../models/Reservation');
-const Schedule = require('../models/Schedule');
+const { Schedule, Reservation, User, Service } = require('../models');
 
 // Cliente faz reserva
 exports.createReservation = async (req, res) => {
@@ -17,8 +16,8 @@ exports.createReservation = async (req, res) => {
     }
 
     const reserva = await Reservation.create({
-      UserId: req.user.id,
-      ScheduleId: scheduleId,
+      userId: req.user.id,
+      scheduleId,
     });
 
     await horario.update({ status: 'reservado' });
@@ -33,15 +32,30 @@ exports.createReservation = async (req, res) => {
 // Admin ou cliente vê reservas
 exports.getReservations = async (req, res) => {
   try {
-    let where = {};
-
+    const where = {};
     if (req.user.tipo === 'cliente') {
-      where.UserId = req.user.id;
+      where.userId = req.user.id;
     }
 
     const reservas = await Reservation.findAll({
       where,
-      include: ['User', 'Schedule']
+      include: [
+        {
+          model: Schedule,
+          include: [
+            {
+              model: Service,
+              as: 'service',
+              include: [{ model: User, as: 'profissional', attributes: ['id', 'nome'] }]
+            }
+          ]
+        },
+        {
+          model: User,
+          as: 'cliente',
+          attributes: ['id', 'nome', 'email']
+        }
+      ]
     });
 
     res.json(reservas);
@@ -57,7 +71,9 @@ exports.updateReservation = async (req, res) => {
   const { status } = req.body;
 
   try {
-    const reserva = await Reservation.findByPk(id, { include: Schedule });
+    const reserva = await Reservation.findByPk(id, {
+      include: [{ model: Schedule }]
+    });
 
     if (!reserva) {
       return res.status(404).json({ message: 'Reserva não encontrada' });
@@ -80,8 +96,19 @@ exports.updateReservation = async (req, res) => {
 exports.getMyReservations = async (req, res) => {
   try {
     const reservas = await Reservation.findAll({
-      where: { UserId: req.user.id },
-      include: ['Schedule']
+      where: { userId: req.user.id },
+      include: [
+        {
+          model: Schedule,
+          include: [
+            {
+              model: Service,
+              as: 'service',
+              include: [{ model: User, as: 'profissional', attributes: ['id', 'nome'] }]
+            }
+          ]
+        }
+      ]
     });
 
     res.json(reservas);
@@ -90,4 +117,3 @@ exports.getMyReservations = async (req, res) => {
     res.status(500).json({ message: 'Erro ao buscar suas reservas' });
   }
 };
-
