@@ -1,4 +1,7 @@
 const { Schedule, Reservation, User, Service } = require('../models');
+const AuditLog = require('../models/AuditLog'); // Corrigi nome do arquivo para AuditLog
+
+// Cliente faz reserva
 exports.createReservation = async (req, res) => {
   const { scheduleId } = req.body;
 
@@ -39,6 +42,13 @@ exports.createReservation = async (req, res) => {
 
     await horario.update({ status: 'reservado' });
 
+    // Criar log de auditoria
+    await AuditLog.create({
+      userId: req.user.id,
+      action: 'Criou reserva',
+      details: `Reserva ID: ${reserva.id}, Schedule ID: ${scheduleId}`
+    });
+
     res.status(201).json({ message: 'Reserva realizada com sucesso', reserva });
   } catch (error) {
     console.error(error);
@@ -54,7 +64,11 @@ exports.getReservations = async (req, res) => {
       where.userId = req.user.id;
     }
 
-    const reservas = await Reservation.findAll({
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const offset = (page - 1) * limit;
+
+    const { count, rows: reservas } = await Reservation.findAndCountAll({
       where,
       include: [
         {
@@ -72,10 +86,18 @@ exports.getReservations = async (req, res) => {
           as: 'cliente',
           attributes: ['id', 'nome', 'email']
         }
-      ]
+      ],
+      limit,
+      offset,
+      order: [['createdAt', 'DESC']]
     });
 
-    res.json(reservas);
+    res.json({
+      total: count,
+      page,
+      totalPages: Math.ceil(count / limit),
+      reservas
+    });
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: 'Erro ao buscar reservas' });
@@ -104,6 +126,14 @@ exports.updateReservation = async (req, res) => {
       }
       await reserva.Schedule.update({ status: 'disponível' });
       await reserva.update({ status, motivoRecusa: null });
+
+      // Log de auditoria
+      await AuditLog.create({
+        userId: req.user.id,
+        action: 'Cancelou reserva',
+        details: `Reserva ID: ${reserva.id}`
+      });
+
       return res.json({ message: 'Reserva cancelada com sucesso', reserva });
     }
 
@@ -113,6 +143,14 @@ exports.updateReservation = async (req, res) => {
         await reserva.Schedule.update({ status: 'disponível' });
       }
       await reserva.update({ status, motivoRecusa: status === 'cancelada' ? motivoRecusa : null });
+
+      // Log de auditoria
+      await AuditLog.create({
+        userId: req.user.id,
+        action: `Atualizou reserva para ${status}`,
+        details: `Reserva ID: ${reserva.id}${motivoRecusa ? ', Motivo: ' + motivoRecusa : ''}`
+      });
+
       return res.json({ message: `Reserva ${status}`, reserva });
     }
 
@@ -123,7 +161,6 @@ exports.updateReservation = async (req, res) => {
     res.status(500).json({ message: 'Erro ao atualizar reserva' });
   }
 };
-
 
 // Cliente vê apenas suas próprias reservas
 exports.getMyReservations = async (req, res) => {

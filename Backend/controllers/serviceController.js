@@ -15,13 +15,29 @@ exports.createService = async (req, res) => {
 
 exports.getServices = async (req, res) => {
   try {
-    const services = await Service.findAll({ include: { model: User, as: 'profissional' } });
-    res.json(services);
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const offset = (page - 1) * limit;
+
+    const { count, rows: services } = await Service.findAndCountAll({
+      include: { model: User, as: 'profissional' },
+      limit,
+      offset,
+      order: [['createdAt', 'DESC']]
+    });
+
+    res.json({
+      total: count,
+      page,
+      totalPages: Math.ceil(count / limit),
+      services
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: 'Erro ao buscar serviços' });
   }
 };
+
 
 
 exports.updateService = async (req, res) => {

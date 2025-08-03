@@ -20,7 +20,11 @@ exports.createSchedule = async (req, res) => {
 // Cliente lista horários disponíveis com detalhes do serviço e profissional
 exports.getAvailableSchedules = async (req, res) => {
   try {
-    const horarios = await Schedule.findAll({
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const offset = (page - 1) * limit;
+
+    const { count, rows: horarios } = await Schedule.findAndCountAll({
       where: { status: 'disponível' },
       include: {
         model: Service,
@@ -31,14 +35,23 @@ exports.getAvailableSchedules = async (req, res) => {
           attributes: ['id', 'nome']
         }
       },
-      order: [['data', 'ASC'], ['hora', 'ASC']]
+      order: [['data', 'ASC'], ['hora', 'ASC']],
+      limit,
+      offset
     });
-    res.json(horarios);
+
+    res.json({
+      total: count,
+      page,
+      totalPages: Math.ceil(count / limit),
+      horarios
+    });
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: 'Erro ao listar horários' });
   }
 };
+
 
 // Admin remove horário
 exports.deleteSchedule = async (req, res) => {
