@@ -75,3 +75,19 @@ exports.updateReservation = async (req, res) => {
     res.status(500).json({ message: 'Erro ao atualizar reserva' });
   }
 };
+
+// Cliente vê apenas suas próprias reservas
+exports.getMyReservations = async (req, res) => {
+  try {
+    const reservas = await Reservation.findAll({
+      where: { UserId: req.user.id },
+      include: ['Schedule']
+    });
+
+    res.json(reservas);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Erro ao buscar suas reservas' });
+  }
+};
+
