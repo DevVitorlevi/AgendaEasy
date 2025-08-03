@@ -1,6 +1,4 @@
 const { Schedule, Reservation, User, Service } = require('../models');
-
-// Cliente faz reserva
 exports.createReservation = async (req, res) => {
   const { scheduleId } = req.body;
 
@@ -9,10 +7,29 @@ exports.createReservation = async (req, res) => {
   }
 
   try {
-    const horario = await Schedule.findByPk(scheduleId);
+    const horario = await Schedule.findByPk(scheduleId, {
+      include: { model: Service, as: 'service' }
+    });
 
     if (!horario || horario.status === 'reservado') {
       return res.status(400).json({ message: 'Horário não disponível' });
+    }
+
+    // Validar se usuário já tem reserva no mesmo dia, hora e serviço
+    const existing = await Reservation.findOne({
+      where: { userId: req.user.id },
+      include: [{
+        model: Schedule,
+        where: {
+          data: horario.data,
+          hora: horario.hora,
+          serviceId: horario.serviceId
+        }
+      }]
+    });
+
+    if (existing) {
+      return res.status(400).json({ message: 'Você já tem uma reserva para esse serviço, dia e horário.' });
     }
 
     const reserva = await Reservation.create({
@@ -68,29 +85,45 @@ exports.getReservations = async (req, res) => {
 // Admin aprova/cancela reserva
 exports.updateReservation = async (req, res) => {
   const { id } = req.params;
-  const { status } = req.body;
+  const { status, motivoRecusa } = req.body;
 
   try {
-    const reserva = await Reservation.findByPk(id, {
-      include: [{ model: Schedule }]
-    });
+    const reserva = await Reservation.findByPk(id, { include: Schedule });
 
     if (!reserva) {
       return res.status(404).json({ message: 'Reserva não encontrada' });
     }
 
-    // Se for cancelada, libera horário
-    if (status === 'cancelada') {
+    // Cliente só pode cancelar sua própria reserva
+    if (req.user.tipo === 'cliente') {
+      if (reserva.userId !== req.user.id) {
+        return res.status(403).json({ message: 'Não autorizado' });
+      }
+      if (status !== 'cancelada') {
+        return res.status(400).json({ message: 'Clientes só podem cancelar reservas' });
+      }
       await reserva.Schedule.update({ status: 'disponível' });
+      await reserva.update({ status, motivoRecusa: null });
+      return res.json({ message: 'Reserva cancelada com sucesso', reserva });
     }
 
-    await reserva.update({ status });
-    res.json({ message: `Reserva ${status}`, reserva });
+    // Admin pode aprovar ou cancelar e informar motivo da recusa
+    if (req.user.tipo === 'admin') {
+      if (status === 'cancelada') {
+        await reserva.Schedule.update({ status: 'disponível' });
+      }
+      await reserva.update({ status, motivoRecusa: status === 'cancelada' ? motivoRecusa : null });
+      return res.json({ message: `Reserva ${status}`, reserva });
+    }
+
+    res.status(403).json({ message: 'Não autorizado' });
+
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: 'Erro ao atualizar reserva' });
   }
 };
+
 
 // Cliente vê apenas suas próprias reservas
 exports.getMyReservations = async (req, res) => {
