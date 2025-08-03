@@ -4,6 +4,8 @@ require('dotenv').config();
 
 const sequelize = require('./config/database');
 const authRoutes = require('./routes/authRoutes');
+const scheduleRoutes = require('./routes/scheduleRoutes');
+const reservationRoutes = require('./routes/reservationRoutes');
 
 const app = express();
 
@@ -12,6 +14,8 @@ app.use(express.json());
 
 // Rotas públicas
 app.use('/api/auth', authRoutes);
+app.use('/api/schedules', scheduleRoutes);
+app.use('/api/reservations', reservationRoutes);
 
 // Teste de conexão e sync banco
 sequelize.authenticate()
